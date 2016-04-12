@@ -1,3 +1,5 @@
+#!/bin/python2
+
 import argparse
 import datetime
 import errno
@@ -8,9 +10,9 @@ import sys
 import time
 from xml.etree import ElementTree
 
-import libvirt
+import libvirt  # python2 linux only?! (no wheel for windows, could be built with swig?)
 
-from config import ACCESS_KEY_ID, SECRET_ACCESS_KEY, PASSPHRASE, AWS_REGION, COMPRESSION_LEVEL, LOG_FILE
+from config import ACCESS_KEY_ID, SECRET_ACCESS_KEY, PASSPHRASE, REGION_NAME, COMPRESSION_LEVEL
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--blockpull',
@@ -21,12 +23,10 @@ args = parser.parse_args()
 
 from glacier import Glacier
 
-logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
-# logging.basicConfig(level=logging.DEBUG)
 
 
 if __name__ == '__main__':
-    glacier = Glacier(access_key_id=ACCESS_KEY_ID, secret_access_key=SECRET_ACCESS_KEY, region_name=AWS_REGION)
+    glacier = Glacier(access_key_id=ACCESS_KEY_ID, secret_access_key=SECRET_ACCESS_KEY, region_name=REGION_NAME)
 
     try:
         logging.debug("Connecting to libvirt")
@@ -39,15 +39,15 @@ if __name__ == '__main__':
             logging.debug(domXML)
 
             tree = ElementTree.fromstring(domXML)
-            disks = tree.findall('//domain/devices/disk[@type="file"]/source/@file')
+            disks = tree.findall('./devices/disk[@type="file"]/source/[@file]')
 
             if len(disks) == 0:
                 continue
 
             snapshotXML = "<domainsnapshot><disks>"
 
-            for disk_file in disks:
-                is_block = stat.S_IFBLK(os.stat(file))
+            for disk_file in [disk.attrib['file'] for disk in disks]:
+                is_block = stat.S_ISBLK(os.stat(disk_file).st_mode)
                 logging.debug("Disk: %s", disk_file)
 
                 if is_block or disk_file.startswith('/dev/'):
@@ -85,6 +85,6 @@ if __name__ == '__main__':
 
     except Exception as e:
         logging.critical(e)
-        sys.exit(errno.ECANCELED)
+        sys.exit(errno.EAGAIN)
     else:
         logging.info("%s - No errors occurred during backup." % (datetime.datetime.utcnow()))
